@@ -1,0 +1,220 @@
+<h2>每日待办规划器 — 系统架构设计</h2>
+<p class="subtitle">基于现有 todo-app 扩展的方案 B 完整框架</p>
+
+<div class="section">
+  <h3>1. 系统架构图</h3>
+  <div class="mockup">
+    <div class="mockup-header">Architecture Overview</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px; line-height: 1.8;">
+<pre style="margin:0; color: #374151;">┌─────────────────────────────────────────────────────────────────┐
+│                        用户端 (Client)                           │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
+│  │ 电脑浏览器    │  │ 手机浏览器    │  │ 微信 (WxPusher 推送)  │   │
+│  │ React SPA     │  │ PWA 响应式   │  │ 每日待办提醒卡片      │   │
+│  └──────┬───────┘  └──────┬───────┘  └──────────────────────┘   │
+└─────────┼─────────────────┼─────────────────────────────────────┘
+          │                 │
+          └────────┬────────┘
+                   │ HTTP/REST
+┌──────────────────┼────────────────────────────────────────────────┐
+│                  ▼                                               │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │              Express.js 后端 (Node.js)                      │  │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐  │  │
+│  │  │ /api/    │ │ /api/    │ │ /api/    │ │ /api/        │  │  │
+│  │  │ tasks    │ │ schedule │ │ settings │ │ push         │  │  │
+│  │  │ CRUD     │ │ 重排逻辑  │ │ 偏好配置  │ │ WxPusher     │  │  │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────────┘  │  │
+│  │                                                             │  │
+│  │  ┌──────────────────────────────────────────────────────┐  │  │
+│  │  │        定时任务引擎 (node-cron)                       │  │  │
+│  │  │  • 每天 22:00 → 推送"填明日待办"提醒                  │  │  │
+│  │  │  • 每天 08:00 → 重排任务 + 顺延未完成 + 推送日报       │  │  │
+│  │  └──────────────────────────────────────────────────────┘  │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                              │                                   │
+│                              ▼                                   │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │              SQLite 数据库 (本地文件)                       │  │
+│  │  tasks │ schedules │ settings │ history                     │  │
+│  └────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>2. 数据模型设计</h3>
+  <div class="mockup">
+    <div class="mockup-header">Task 表结构</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px;">
+<pre style="margin:0; color: #374151;">Task {
+  id:           string (UUID)
+  title:        string           // 任务名称
+  description:  string|null      // 备注
+  scheduledDate: date            // 安排日期 (YYYY-MM-DD)
+  startTime:    string           // "08:00"
+  endTime:      string|null      // "10:00" (可选)
+  brainTokens:  integer          // 人脑 Token 消耗
+  intensity:    enum             // low | medium | high | extreme
+  priority:     integer          // 1-5，用于重排
+  status:       enum             // pending | completed | cancelled
+  autoRollover: boolean          // 未完成时是否顺延
+  createdAt:    datetime
+  updatedAt:    datetime
+}
+
+// 每天 8 点定时任务的逻辑：
+// 1. 查询 scheduledDate = 今天 且 status = pending 的任务
+// 2. 将这些任务的 scheduledDate 改为明天
+// 3. 重新计算 startTime（按 priority 排序，均匀分布在 6-22 点）
+// 4. 生成新的 schedule 记录
+// 5. 推送 WxPusher 消息
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>3. 前端页面结构</div>
+  <div class="mockup">
+    <div class="mockup-header">路由与组件树</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px;">
+<pre style="margin:0; color: #374151;">App
+├── /                    →  DailyPlanner (主页面)
+│   ├── TimeLinePanel    →  左侧时间轴 (6:00-24:00)
+│   │   └── TimeBlock    →  每小时一个槽位，显示任务色块
+│   ├── TaskListPanel    →  右侧任务列表
+│   │   ├── TaskCard     →  单个任务卡片
+│   │   ├── TaskForm     →  添加/编辑任务表单
+│   │   └── TokenBudget  →  底部 Token 预算条
+│   └── DailyStats       →  顶部今日统计
+│
+├── /history             →  HistoryPage (历史记录)
+│   └── WeekView         →  周视图回顾
+│
+└── /settings            →  SettingsPage (设置)
+    ├── WxPusherConfig   →  WxPusher UID / Token 配置
+    ├── NotificationPrefs → 提醒时间设置
+    └── TokenBudgetLimit → 每日 Token 上限
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>4. 定时任务流程</div>
+  <div class="mockup">
+    <div class="mockup-header">22:00 提醒流程 & 08:00 重排流程</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px;">
+<pre style="margin:0; color: #374151;">22:00 晚间提醒：
+  ├─ 检查明天是否有已安排任务
+  ├─ 若无 → 推送："📋 明天还没有安排任务哦，快来规划一下"
+  └─ 若有 → 推送："📋 明日待办已就绪（4个任务，共 670 token）"
+
+08:00 早间重排：
+  ├─ 查找今天 status=pending 的任务
+  ├─ 将这些任务 scheduledDate 改为明天
+  ├─ 按 priority 重新分配时间段（6:00-22:00 均匀分布）
+  ├─ 检查是否有任务连续顺延超过 3 天 → 标记为高优先级
+  ├─ 生成新的每日计划
+  └─ 推送 WxPusher：
+      "📅 5月15日待办（顺延2个/新增0个）
+       1. 看钙钛矿论文 08:00 🧠50
+       2. 组会汇报准备 10:00 🧠120
+       ...
+       今日预算：670/1000 token"
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>5. 手机端适配策略</div>
+  <div class="mockup">
+    <div class="mockup-header">响应式断点设计</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px;">
+<pre style="margin:0; color: #374151;">桌面端 (≥1024px):
+  ├─ 左右分栏：左侧时间轴(280px) + 右侧任务列表(flex:1)
+  └─ 完整显示所有信息
+
+平板端 (768px-1024px):
+  ├─ 左右分栏但时间轴缩窄(200px)
+  └─ 任务卡片简化显示
+
+手机端 (<768px):
+  ├─ 单栏布局，底部 Tab 切换
+  │   Tab1: 时间轴视图（垂直滚动）
+  │   Tab2: 任务列表视图
+  │   Tab3: 设置
+  ├─ 添加任务用底部 Sheet 弹出
+  └─ Token 预算显示在顶部胶囊条
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>6. 技术栈确认</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px;">
+<pre style="margin:0; color: #374151;">前端 (复用现有):
+  • React 18 + Vite + Tailwind CSS
+  • 新增: react-router-dom (路由), dayjs (日期), framer-motion (动画)
+
+后端 (复用现有):
+  • Express.js + better-sqlite3 (同步 SQLite，适合单机)
+  • 新增: node-cron (定时任务), axios (WxPusher API)
+
+数据持久化:
+  • SQLite 单文件数据库 (todo.db)
+  • 备份: 每天 08:00 自动导出 JSON 到 backup/ 目录
+
+外部服务:
+  • WxPusher (你已有的推送渠道)
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>7. 文件结构规划</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px;">
+<pre style="margin:0; color: #374151;">todo-app/
+├── backend/
+│   ├── server.js              # 入口 (复用)
+│   ├── database.js            # SQLite 连接 & 初始化
+│   ├── cronJobs.js            # 定时任务 (22:00 提醒 + 08:00 重排)
+│   ├── routes/
+│   │   ├── tasks.js           # 任务 CRUD
+│   │   ├── schedule.js        # 日程重排逻辑
+│   │   └── settings.js        # 用户配置
+│   ├── services/
+│   │   └── wxPusher.js        # WxPusher 推送封装
+│   └── todo.db                # SQLite 数据库文件
+│
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx            # 路由入口 (改造)
+│   │   ├── pages/
+│   │   │   ├── DailyPlanner.jsx    # 主页面
+│   │   │   ├── HistoryPage.jsx     # 历史回顾
+│   │   │   └── SettingsPage.jsx    # 设置
+│   │   ├── components/
+│   │   │   ├── TimeLinePanel.jsx   # 左侧时间轴
+│   │   │   ├── TaskListPanel.jsx   # 右侧任务列表
+│   │   │   ├── TaskCard.jsx        # 任务卡片
+│   │   │   ├── TaskForm.jsx        # 添加/编辑表单
+│   │   │   ├── TokenBudget.jsx     # Token 预算条
+│   │   │   └── MobileNav.jsx       # 手机底部导航
+│   │   └── hooks/
+│   │       ├── useTasks.js         # 任务数据管理
+│   │       └── useSchedule.js      # 日程逻辑
+│   └── ... (现有配置)
+└── package.json
+</pre>
+    </div>
+  </div>
+</div>

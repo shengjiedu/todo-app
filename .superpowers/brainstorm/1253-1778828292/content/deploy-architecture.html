@@ -1,0 +1,170 @@
+<h2>部署架构：如何让手机实时访问</h2>
+<p class="subtitle">内网穿透方案对比 —— 你的电脑作为服务器，手机随时访问</p>
+
+<div class="section">
+  <h3>网络架构示意</h3>
+  <div class="mockup">
+    <div class="mockup-header">手机 ↔ 你的电脑 连接方式</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px;">
+<pre style="margin:0; color: #374151;">手机 (4G/WiFi)
+    │
+    │ 互联网
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     内网穿透隧道                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │ 方案1:      │  │ 方案2:      │  │ 方案3:              │  │
+│  │ Cloudflare  │  │ 花生壳/     │  │ 同 WiFi 直连        │  │
+│  │ Tunnel      │  │ 路由端口映射 │  │ (最简单的开发测试)   │  │
+│  │ (免费)      │  │ (付费/复杂)  │  │ (仅限同一网络)      │  │
+│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘  │
+└─────────┼────────────────┼────────────────────┼─────────────┘
+          │                │                    │
+          └────────────────┴────────────────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │  你的 Windows 电脑 │
+                    │  localhost:3000  │
+                    │  (React 前端)     │
+                    │  localhost:3001  │
+                    │  (Express 后端)   │
+                    └─────────────────┘
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>三种部署方案对比</h3>
+
+  <div class="options">
+    <div class="option" data-choice="cf-tunnel">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>Cloudflare Tunnel（推荐）</h3>
+        <p><strong>原理：</strong>在你的电脑上装一个 cloudflared 客户端，自动建立加密隧道到 Cloudflare 边缘节点，分配一个 https://你的域名.trycloudflare.com 的公网 URL。手机在任何网络都能访问。</p>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>优点</h4>
+            <ul>
+              <li>完全免费</li>
+              <li>自动生成 HTTPS 证书</li>
+              <li>无需公网 IP、无需配置路由器</li>
+              <li>手机在 4G/5G 下也能访问</li>
+              <li>隧道加密，安全性好</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>缺点</h4>
+            <ul>
+              <li>域名随机（每次重启会变，除非买自定义域名）</li>
+              <li>需要电脑一直开机</li>
+              <li>依赖 Cloudflare 网络</li>
+            </ul>
+          </div>
+        </div>
+        <p style="font-size: 12px; color: #6b7280; margin-top: 8px;"><strong>适合：</strong>不想折腾、追求稳定、愿意电脑一直开机的你</p>
+      </div>
+    </div>
+
+    <div class="option" data-choice="frp">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>FRP / 花生壳 / 路由映射</h3>
+        <p><strong>原理：</strong>如果你有公网 IP（或买内网穿透服务），把路由器的某个端口映射到你电脑的 3000/3001 端口。手机通过 http://你的公网IP:端口 访问。</p>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>优点</h4>
+            <ul>
+              <li>域名固定（可以绑定自己的域名）</li>
+              <li>不依赖第三方隧道服务</li>
+              <li>访问速度快（直连）</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>缺点</h4>
+            <ul>
+              <li>大多数家庭宽带没有公网 IP（运营商 NAT）</li>
+              <li>需要配置路由器端口转发</li>
+              <li>需要自己配 HTTPS（Let's Encrypt）</li>
+              <li>暴露公网有安全风险</li>
+            </ul>
+          </div>
+        </div>
+        <p style="font-size: 12px; color: #6b7280; margin-top: 8px;"><strong>适合：</strong>有公网 IP、愿意折腾网络配置、追求固定域名的你</p>
+      </div>
+    </div>
+
+    <div class="option" data-choice="local-wifi">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>同 WiFi 直连（开发测试用）</h3>
+        <p><strong>原理：</strong>手机和电脑连接同一个路由器，手机通过电脑的局域网 IP 访问（如 http://192.168.1.5:3000）。零配置，即开即用。</p>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>优点</h4>
+            <ul>
+              <li>零配置，即开即用</li>
+              <li>访问速度最快（局域网）</li>
+              <li>适合开发阶段调试手机端</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>缺点</h4>
+            <ul>
+              <li>手机必须连同一个 WiFi，出门就用不了</li>
+              <li>电脑 IP 可能变化（DHCP）</li>
+              <li>不是真正的"远程访问"</li>
+            </ul>
+          </div>
+        </div>
+        <p style="font-size: 12px; color: #6b7280; margin-top: 8px;"><strong>适合：</strong>开发调试阶段快速验证手机端效果</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>推荐方案：Cloudflare Tunnel（零配置 + 手机随时访问）</h3>
+  <div class="mockup">
+    <div class="mockup-header">部署步骤（你只需执行 3 条命令）</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px;">
+<pre style="margin:0; color: #374151;">第 1 步：下载 Cloudflared（Windows 版）
+  https://github.com/cloudflare/cloudflared/releases
+  下载 cloudflared-windows-amd64.exe，改名为 cloudflared.exe
+  放到 C:\Windows\System32\ 或项目目录
+
+第 2 步：认证（只需一次）
+  cloudflared.exe tunnel login
+  → 会弹出浏览器让你登录 Cloudflare 账号（免费注册）
+
+第 3 步：创建隧道并运行
+  cloudflared.exe tunnel --url http://localhost:3000
+  → 终端会显示：https://xxxx.trycloudflare.com
+  → 手机浏览器打开这个地址就能用了！
+
+持久化运行（开机自启）：
+  cloudflared.exe service install
+  cloudflared.exe tunnel create todo-app
+  # 然后配置 config.yml 指向你的本地端口
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>完整启动流程（每天使用）</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px;">
+<pre style="margin:0; color: #374151;">1. 打开电脑
+2. 启动后端：  cd todo-app/backend && node server.js
+3. 启动前端：  cd todo-app/frontend && npm run dev
+4. 启动隧道：  cloudflared tunnel --url http://localhost:3000
+5. 手机浏览器打开 https://xxxx.trycloudflare.com
+
+【可选】把以上写成 start.bat 双击运行
+</pre>
+    </div>
+  </div>
+</div>

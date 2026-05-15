@@ -1,0 +1,133 @@
+<h2>每日待办规划器 — 布局概念</h2>
+<p class="subtitle">左侧时间轴 6:00-24:00 + 右侧待办列表 + 人脑 Token 估算</p>
+
+<div class="mockup">
+  <div class="mockup-header">主界面预览</div>
+  <div class="mockup-body" style="padding: 0;">
+    <div style="display: flex; height: 500px; font-family: system-ui, sans-serif; font-size: 13px;">
+      <!-- 左侧时间表 -->
+      <div style="width: 280px; border-right: 1px solid #e5e7eb; background: #f9fafb; overflow-y: auto;">
+        <div style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #374151;">
+          📅 2026-05-15 时间表
+        </div>
+        <div style="padding: 8px 0;">
+          <!-- 时间块 -->
+          <div style="display: flex; align-items: center; padding: 6px 16px; border-left: 3px solid transparent;">
+            <span style="width: 45px; color: #9ca3af; font-size: 12px;">06:00</span>
+            <div style="flex: 1; height: 28px; background: #e5e7eb; border-radius: 4px; margin-left: 8px;"></div>
+          </div>
+          <div style="display: flex; align-items: center; padding: 6px 16px; border-left: 3px solid #10b981; background: #ecfdf5;">
+            <span style="width: 45px; color: #6b7280; font-size: 12px; font-weight: 500;">08:00</span>
+            <div style="flex: 1; margin-left: 8px; background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+              看钙钛矿论文日报 🧠 50token
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; padding: 6px 16px; border-left: 3px solid transparent;">
+            <span style="width: 45px; color: #9ca3af; font-size: 12px;">09:00</span>
+            <div style="flex: 1; height: 28px; background: #e5e7eb; border-radius: 4px; margin-left: 8px;"></div>
+          </div>
+          <div style="display: flex; align-items: center; padding: 6px 16px; border-left: 3px solid #f59e0b; background: #fffbeb;">
+            <span style="width: 45px; color: #6b7280; font-size: 12px; font-weight: 500;">10:00</span>
+            <div style="flex: 1; margin-left: 8px; background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+              组会汇报准备 🧠 120token
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; padding: 6px 16px; border-left: 3px solid #8b5cf6; background: #f5f3ff;">
+            <span style="width: 45px; color: #6b7280; font-size: 12px; font-weight: 500;">14:00</span>
+            <div style="flex: 1; margin-left: 8px; background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+              实验数据分析 🧠 200token
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; padding: 6px 16px; border-left: 3px solid transparent;">
+            <span style="width: 45px; color: #9ca3af; font-size: 12px;">16:00</span>
+            <div style="flex: 1; height: 28px; background: #e5e7eb; border-radius: 4px; margin-left: 8px;"></div>
+          </div>
+          <div style="display: flex; align-items: center; padding: 6px 16px; border-left: 3px solid #ec4899; background: #fdf2f8;">
+            <span style="width: 45px; color: #6b7280; font-size: 12px; font-weight: 500;">19:00</span>
+            <div style="flex: 1; margin-left: 8px; background: #ec4899; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+              写论文Introduction 🧠 300token
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; padding: 6px 16px; border-left: 3px solid transparent;">
+            <span style="width: 45px; color: #9ca3af; font-size: 12px;">22:00</span>
+            <div style="flex: 1; height: 28px; border: 2px dashed #d1d5db; border-radius: 4px; margin-left: 8px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 11px;">+ 添加</div>
+          </div>
+        </div>
+        <!-- 底部统计 -->
+        <div style="padding: 12px 16px; border-top: 1px solid #e5e7eb; background: white;">
+          <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">今日人脑 Token 预算</div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="flex: 1; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+              <div style="width: 67%; height: 100%; background: linear-gradient(90deg, #10b981, #f59e0b, #ec4899); border-radius: 4px;"></div>
+            </div>
+            <span style="font-size: 12px; font-weight: 600; color: #374151;">670/1000</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧待办列表 -->
+      <div style="flex: 1; display: flex; flex-direction: column; background: white;">
+        <div style="padding: 12px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-weight: 600; color: #374151;">📝 明日待办</span>
+          <span style="font-size: 12px; color: #9ca3af;">4 个任务 · 剩余 330 token</span>
+        </div>
+        <div style="flex: 1; padding: 16px 20px; overflow-y: auto;">
+          <!-- 任务卡片 -->
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #10b981;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
+              <span style="font-weight: 500; color: #111827;">看钙钛矿论文日报</span>
+              <span style="font-size: 11px; background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 10px;">08:00-09:00</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: #6b7280;">
+              <span>🧠 50 token</span>
+              <span>📊 低强度</span>
+              <span style="margin-left: auto;">⏱️ ~1h</span>
+            </div>
+          </div>
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #f59e0b;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
+              <span style="font-weight: 500; color: #111827;">组会汇报准备</span>
+              <span style="font-size: 11px; background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 10px;">10:00-12:00</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: #6b7280;">
+              <span>🧠 120 token</span>
+              <span>📊 中强度</span>
+              <span style="margin-left: auto;">⏱️ ~2h</span>
+            </div>
+          </div>
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #8b5cf6;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
+              <span style="font-weight: 500; color: #111827;">实验数据分析</span>
+              <span style="font-size: 11px; background: #ede9fe; color: #5b21b6; padding: 2px 8px; border-radius: 10px;">14:00-17:00</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: #6b7280;">
+              <span>🧠 200 token</span>
+              <span>📊 高强度</span>
+              <span style="margin-left: auto;">⏱️ ~3h</span>
+            </div>
+          </div>
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #ec4899;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
+              <span style="font-weight: 500; color: #111827;">写论文 Introduction</span>
+              <span style="font-size: 11px; background: #fce7f3; color: #9d174d; padding: 2px 8px; border-radius: 10px;">19:00-22:00</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: #6b7280;">
+              <span>🧠 300 token</span>
+              <span>📊 极高强度</span>
+              <span style="margin-left: auto;">⏱️ ~3h</span>
+            </div>
+          </div>
+        </div>
+        <!-- 添加按钮 -->
+        <div style="padding: 12px 20px; border-top: 1px solid #e5e7eb;">
+          <button style="width: 100%; padding: 10px; background: #4f46e5; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer;">+ 添加新任务</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>关键设计决策待确认</h3>
+  <p>在我继续细化之前，需要确认几个影响架构的问题：</p>
+</div>
