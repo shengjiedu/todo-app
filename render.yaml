@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: todo-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VERCEL_URL
+        sync: false  # 部署后手动填入你的 Vercel 域名
