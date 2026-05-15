@@ -1,0 +1,14 @@
+{
+  "name": "daily-todo-planner",
+  "version": "1.0.0",
+  "description": "每日待办规划器 - 支持时间轴、人脑 Token 估算、定时推送",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && node server.js",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
