@@ -1,57 +1,65 @@
-import { Router } from 'express';
-import db from '../database.js';
+const express = require('express');
+const AV = require('leancloud-storage');
 
-const router = Router();
+const router = express.Router();
+const Settings = AV.Object.extend('Settings');
+
+async function getOrCreateSettings() {
+  const query = new AV.Query(Settings);
+  query.equalTo('key', 'default');
+  let settings = await query.first().catch(() => null);
+  if (!settings) {
+    settings = new Settings();
+    settings.set('key', 'default');
+    settings.set('dailyTokenBudget', 1000);
+    settings.set('wxPusherUID', '');
+    settings.set('wxPusherToken', '');
+    settings.set('remindTime', '22:00');
+    settings.set('morningPushTime', '08:00');
+    await settings.save();
+  }
+  return settings;
+}
 
 // GET /api/settings
-router.get('/', (req, res) => {
-  const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
-  if (!settings) {
-    return res.status(404).json({ error: 'Settings not found' });
+router.get('/', async (req, res) => {
+  try {
+    const settings = await getOrCreateSettings();
+    res.json(settings.toJSON());
+  } catch (err) {
+    console.error('GET settings error:', err);
+    res.status(500).json({ error: err.message });
   }
-  // Don't expose sensitive token to frontend? For now expose all since it's local app
-  res.json(settings);
 });
 
 // PUT /api/settings
-router.put('/', (req, res) => {
-  const { dailyTokenBudget, wxPusherUID, wxPusherToken, remindTime, morningPushTime } = req.body;
+router.put('/', async (req, res) => {
+  try {
+    const { dailyTokenBudget, wxPusherUID, wxPusherToken, remindTime, morningPushTime } = req.body;
+    const settings = await getOrCreateSettings();
 
-  const updates = [];
-  const params = {};
+    if (dailyTokenBudget !== undefined) {
+      settings.set('dailyTokenBudget', Math.max(1, parseInt(dailyTokenBudget, 10) || 1000));
+    }
+    if (wxPusherUID !== undefined) {
+      settings.set('wxPusherUID', wxPusherUID || '');
+    }
+    if (wxPusherToken !== undefined) {
+      settings.set('wxPusherToken', wxPusherToken || '');
+    }
+    if (remindTime !== undefined) {
+      settings.set('remindTime', remindTime);
+    }
+    if (morningPushTime !== undefined) {
+      settings.set('morningPushTime', morningPushTime);
+    }
 
-  if (dailyTokenBudget !== undefined) {
-    updates.push('dailyTokenBudget = @dailyTokenBudget');
-    params.dailyTokenBudget = Math.max(1, parseInt(dailyTokenBudget, 10) || 1000);
+    const updated = await settings.save();
+    res.json(updated.toJSON());
+  } catch (err) {
+    console.error('PUT settings error:', err);
+    res.status(500).json({ error: err.message });
   }
-  if (wxPusherUID !== undefined) {
-    updates.push('wxPusherUID = @wxPusherUID');
-    params.wxPusherUID = wxPusherUID || null;
-  }
-  if (wxPusherToken !== undefined) {
-    updates.push('wxPusherToken = @wxPusherToken');
-    params.wxPusherToken = wxPusherToken || null;
-  }
-  if (remindTime !== undefined) {
-    updates.push('remindTime = @remindTime');
-    params.remindTime = remindTime;
-  }
-  if (morningPushTime !== undefined) {
-    updates.push('morningPushTime = @morningPushTime');
-    params.morningPushTime = morningPushTime;
-  }
-
-  if (updates.length === 0) {
-    return res.status(400).json({ error: 'No fields to update' });
-  }
-
-  updates.push('updatedAt = @updatedAt');
-  params.updatedAt = new Date().toISOString();
-
-  db.prepare(`UPDATE settings SET ${updates.join(', ')} WHERE id = 1`).run(params);
-
-  const updated = db.prepare('SELECT * FROM settings WHERE id = 1').get();
-  res.json(updated);
 });
 
-export default router;
+module.exports = router;

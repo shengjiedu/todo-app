@@ -1,105 +1,125 @@
-import { Router } from 'express';
-import db from '../database.js';
+const express = require('express');
+const AV = require('leancloud-storage');
 
-const router = Router();
+const router = express.Router();
+const Task = AV.Object.extend('Task');
+const History = AV.Object.extend('History');
+const Settings = AV.Object.extend('Settings');
 
-// Helper: distribute tasks evenly from 06:00 to 22:00
-function distributeTimeSlots(tasks) {
-  const startHour = 6;
-  const endHour = 22;
-  const availableHours = endHour - startHour;
-
-  // Sort by priority desc, then by original startTime
-  const sorted = [...tasks].sort((a, b) => {
-    if (b.priority !== a.priority) return b.priority - a.priority;
-    return a.startTime.localeCompare(b.startTime);
-  });
-
-  const hourStep = availableHours / Math.max(sorted.length, 1);
-
-  return sorted.map((task, index) => {
-    const hour = Math.floor(startHour + index * hourStep);
-    const minute = Math.floor((index * hourStep % 1) * 60);
-    const newStartTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-    return { ...task, startTime: newStartTime };
-  });
+async function getSettings() {
+  const query = new AV.Query(Settings);
+  query.equalTo('key', 'default');
+  let settings = await query.first().catch(() => null);
+  if (!settings) {
+    settings = new Settings();
+    settings.set('key', 'default');
+    settings.set('dailyTokenBudget', 1000);
+    await settings.save();
+  }
+  return settings;
 }
 
-// POST /api/schedule/rollover — 手动触发重排（也供 cron 调用）
-router.post('/rollover', (req, res) => {
-  const today = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+// POST /api/schedule/rollover
+router.post('/rollover', async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-  // 1. Find pending tasks for today
-  const pendingTasks = db.prepare(
-    "SELECT * FROM tasks WHERE scheduledDate = ? AND status = 'pending' AND autoRollover = 1"
-  ).all(today);
+    // 1. Find pending tasks for today
+    const pendingQuery = new AV.Query(Task);
+    pendingQuery.equalTo('scheduledDate', today);
+    pendingQuery.equalTo('status', 'pending');
+    pendingQuery.equalTo('autoRollover', true);
+    const pendingTasks = await pendingQuery.find();
 
-  // 2. Roll them over to tomorrow
-  for (const task of pendingTasks) {
-    const newRolloverCount = task.rolloverCount + 1;
-    const newPriority = newRolloverCount >= 3 ? 5 : task.priority;
-    db.prepare(`
-      UPDATE tasks
-      SET scheduledDate = ?, rolloverCount = ?, priority = ?, updatedAt = ?
-      WHERE id = ?
-    `).run(tomorrow, newRolloverCount, newPriority, new Date().toISOString(), task.id);
+    // 2. Roll them over to tomorrow
+    for (const task of pendingTasks) {
+      const newRolloverCount = (task.get('rolloverCount') || 0) + 1;
+      const newPriority = newRolloverCount >= 3 ? 5 : (task.get('priority') || 3);
+      task.set('scheduledDate', tomorrow);
+      task.set('rolloverCount', newRolloverCount);
+      task.set('priority', newPriority);
+    }
+    if (pendingTasks.length > 0) {
+      await AV.Object.saveAll(pendingTasks);
+    }
+
+    // 3. Redistribute tomorrow tasks
+    const tomorrowQuery = new AV.Query(Task);
+    tomorrowQuery.equalTo('scheduledDate', tomorrow);
+    tomorrowQuery.addDescending('priority');
+    tomorrowQuery.addAscending('startTime');
+    const tomorrowTasks = await tomorrowQuery.find();
+
+    const startHour = 6;
+    const endHour = 22;
+    const availableHours = endHour - startHour;
+    const hourStep = availableHours / Math.max(tomorrowTasks.length, 1);
+
+    for (let i = 0; i < tomorrowTasks.length; i++) {
+      const hour = Math.floor(startHour + i * hourStep);
+      const minute = Math.floor((i * hourStep % 1) * 60);
+      const newStartTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+      tomorrowTasks[i].set('startTime', newStartTime);
+    }
+    if (tomorrowTasks.length > 0) {
+      await AV.Object.saveAll(tomorrowTasks);
+    }
+
+    // 4. Archive today
+    const todayQuery = new AV.Query(Task);
+    todayQuery.equalTo('scheduledDate', today);
+    const allToday = await todayQuery.find();
+    const completedCount = allToday.filter(t => t.get('status') === 'completed').length;
+    const totalTokens = allToday.reduce((sum, t) => sum + (t.get('brainTokens') || 0), 0);
+
+    const history = new History();
+    history.set('date', today);
+    history.set('totalTasks', allToday.length);
+    history.set('completedTasks', completedCount);
+    history.set('rolledTasks', pendingTasks.length);
+    history.set('totalTokens', totalTokens);
+    history.set('snapshot', JSON.stringify(allToday.map(t => t.toJSON())));
+    await history.save();
+
+    res.json({
+      message: 'Rollover completed',
+      rolledCount: pendingTasks.length,
+      tomorrowTaskCount: tomorrowTasks.length
+    });
+  } catch (err) {
+    console.error('Rollover error:', err);
+    res.status(500).json({ error: err.message });
   }
-
-  // 3. Get all tomorrow tasks (rolled + originally scheduled)
-  const tomorrowTasks = db.prepare(
-    'SELECT * FROM tasks WHERE scheduledDate = ? ORDER BY priority DESC, startTime ASC'
-  ).all(tomorrow);
-
-  // 4. Redistribute time slots
-  const redistributed = distributeTimeSlots(tomorrowTasks);
-
-  // 5. Update start times
-  for (const task of redistributed) {
-    db.prepare('UPDATE tasks SET startTime = ?, updatedAt = ? WHERE id = ?')
-      .run(task.startTime, new Date().toISOString(), task.id);
-  }
-
-  // 6. Archive today's data
-  const allToday = db.prepare('SELECT * FROM tasks WHERE scheduledDate = ?').all(today);
-  const completed = allToday.filter(t => t.status === 'completed').length;
-  const totalTokens = allToday.reduce((sum, t) => sum + t.brainTokens, 0);
-
-  db.prepare(`
-    INSERT OR REPLACE INTO history (date, totalTasks, completedTasks, rolledTasks, totalTokens, snapshot)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(today, allToday.length, completed, pendingTasks.length, totalTokens, JSON.stringify(allToday));
-
-  res.json({
-    message: 'Rollover completed',
-    rolledCount: pendingTasks.length,
-    tomorrowTaskCount: redistributed.length,
-    redistributed
-  });
 });
 
 // GET /api/schedule/today
-router.get('/today', (req, res) => {
-  const today = new Date().toISOString().split('T')[0];
-  const tasks = db.prepare(
-    'SELECT * FROM tasks WHERE scheduledDate = ? ORDER BY startTime ASC'
-  ).all(today);
+router.get('/today', async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const query = new AV.Query(Task);
+    query.equalTo('scheduledDate', today);
+    query.addAscending('startTime');
+    const tasks = await query.find();
 
-  const totalTokens = tasks.reduce((sum, t) => sum + (t.status === 'pending' ? t.brainTokens : 0), 0);
-  const budget = db.prepare('SELECT dailyTokenBudget FROM settings WHERE id = 1').get();
+    const totalTokens = tasks.reduce((sum, t) => sum + (t.get('status') === 'pending' ? (t.get('brainTokens') || 0) : 0), 0);
+    const settings = await getSettings();
 
-  res.json({
-    date: today,
-    tasks,
-    stats: {
-      total: tasks.length,
-      pending: tasks.filter(t => t.status === 'pending').length,
-      completed: tasks.filter(t => t.status === 'completed').length,
-      totalTokens,
-      budget: budget?.dailyTokenBudget || 1000
-    }
-  });
+    res.json({
+      date: today,
+      tasks: tasks.map(t => t.toJSON()),
+      stats: {
+        total: tasks.length,
+        pending: tasks.filter(t => t.get('status') === 'pending').length,
+        completed: tasks.filter(t => t.get('status') === 'completed').length,
+        totalTokens,
+        budget: settings.get('dailyTokenBudget') || 1000
+      }
+    });
+  } catch (err) {
+    console.error('Today query error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-export default router;
-export { distributeTimeSlots };
+module.exports = router;

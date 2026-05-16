@@ -1,47 +1,55 @@
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import './database.js';
-import tasksRouter from './routes/tasks.js';
-import scheduleRouter from './routes/schedule.js';
-import settingsRouter from './routes/settings.js';
-import { initCronJobs } from './cronJobs.js';
+const AV = require('leancloud-storage');
+const express = require('express');
+const cors = require('cors');
+const leanengine = require('leanengine');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// 初始化 LeanCloud
+AV.init({
+  appId: process.env.LEANCLOUD_APP_ID || 'your-app-id',
+  appKey: process.env.LEANCLOUD_APP_KEY || 'your-app-key',
+  masterKey: process.env.LEANCLOUD_APP_MASTER_KEY || 'your-master-key',
+  serverURL: process.env.LEANCLOUD_API_SERVER || 'https://your-api-server.com'
+});
+
+// 开启 masterKey 权限
+AV.Cloud.useMasterKey();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
-// CORS: allow local dev and Vercel deployment
+// CORS
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
-  process.env.VERCEL_URL, // will be set after Vercel deployment
-].filter(Boolean);
-
+  'http://localhost:5173',
+];
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.vercel.app')) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.vercel.app') || origin.endsWith('.workers.dev')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   }
 }));
+
+app.use(leanengine.express());
 app.use(express.json());
 
-// API routes
-app.use('/api/tasks', tasksRouter);
-app.use('/api/schedule', scheduleRouter);
-app.use('/api/settings', settingsRouter);
+// 加载云函数
+require('./cloud');
 
-// Health check
+// API 路由
+app.use('/api/tasks', require('./routes/tasks'));
+app.use('/api/schedule', require('./routes/schedule'));
+app.use('/api/settings', require('./routes/settings'));
+
+// 健康检查
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
+// 云函数路由（LeanCloud 自动处理 /1.1/functions 路径）
+
+const PORT = parseInt(process.env.LEANCLOUD_APP_PORT || process.env.PORT || 3000, 10);
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  initCronJobs();
+  console.log(`Server running on port ${PORT}`);
 });

@@ -1,146 +1,111 @@
-import { Router } from 'express';
-import { randomUUID } from 'crypto';
-import db from '../database.js';
+const express = require('express');
+const AV = require('leancloud-storage');
+const { mapIntensity } = require('../cloud');
 
-const router = Router();
-
-function mapIntensity(tokens) {
-  if (tokens <= 50) return 'low';
-  if (tokens <= 150) return 'medium';
-  if (tokens <= 300) return 'high';
-  return 'extreme';
-}
+const router = express.Router();
+const Task = AV.Object.extend('Task');
 
 // GET /api/tasks?date=YYYY-MM-DD
-router.get('/', (req, res) => {
-  const { date } = req.query;
-  if (!date) {
-    return res.status(400).json({ error: 'date parameter is required' });
+router.get('/', async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) {
+      return res.status(400).json({ error: 'date parameter is required' });
+    }
+    const query = new AV.Query(Task);
+    query.equalTo('scheduledDate', date);
+    query.addAscending('startTime');
+    const tasks = await query.find();
+    res.json(tasks.map(t => t.toJSON()));
+  } catch (err) {
+    console.error('GET tasks error:', err);
+    res.status(500).json({ error: err.message });
   }
-  const tasks = db.prepare(
-    'SELECT * FROM tasks WHERE scheduledDate = ? ORDER BY startTime ASC'
-  ).all(date);
-  res.json(tasks);
 });
 
 // POST /api/tasks
-router.post('/', (req, res) => {
-  const { title, description, scheduledDate, startTime, endTime, brainTokens, priority, autoRollover } = req.body;
+router.post('/', async (req, res) => {
+  try {
+    const { title, description, scheduledDate, startTime, endTime, brainTokens, priority, autoRollover } = req.body;
 
-  if (!title || !title.trim()) {
-    return res.status(400).json({ error: 'title is required' });
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'title is required' });
+    }
+    if (!scheduledDate) {
+      return res.status(400).json({ error: 'scheduledDate is required' });
+    }
+    if (!startTime) {
+      return res.status(400).json({ error: 'startTime is required' });
+    }
+
+    const tokens = Math.max(0, parseInt(brainTokens, 10) || 0);
+    const intensity = mapIntensity(tokens);
+    const prio = Math.min(5, Math.max(1, parseInt(priority, 10) || 3));
+
+    const task = new Task();
+    task.set('title', title.trim());
+    task.set('description', description || '');
+    task.set('scheduledDate', scheduledDate);
+    task.set('startTime', startTime);
+    task.set('endTime', endTime || '');
+    task.set('brainTokens', tokens);
+    task.set('intensity', intensity);
+    task.set('priority', prio);
+    task.set('status', 'pending');
+    task.set('autoRollover', autoRollover !== false);
+    task.set('rolloverCount', 0);
+
+    const saved = await task.save();
+    res.status(201).json(saved.toJSON());
+  } catch (err) {
+    console.error('POST task error:', err);
+    res.status(500).json({ error: err.message });
   }
-  if (!scheduledDate) {
-    return res.status(400).json({ error: 'scheduledDate is required' });
-  }
-  if (!startTime) {
-    return res.status(400).json({ error: 'startTime is required' });
-  }
-
-  const now = new Date().toISOString();
-  const tokens = Math.max(0, parseInt(brainTokens, 10) || 0);
-  const intensity = mapIntensity(tokens);
-  const prio = Math.min(5, Math.max(1, parseInt(priority, 10) || 3));
-  const rollover = autoRollover !== false ? 1 : 0;
-
-  const task = {
-    id: randomUUID(),
-    title: title.trim(),
-    description: description || null,
-    scheduledDate,
-    startTime,
-    endTime: endTime || null,
-    brainTokens: tokens,
-    intensity,
-    priority: prio,
-    status: 'pending',
-    autoRollover: rollover,
-    rolloverCount: 0,
-    createdAt: now,
-    updatedAt: now
-  };
-
-  db.prepare(`
-    INSERT INTO tasks (id, title, description, scheduledDate, startTime, endTime, brainTokens, intensity, priority, status, autoRollover, rolloverCount, createdAt, updatedAt)
-    VALUES (@id, @title, @description, @scheduledDate, @startTime, @endTime, @brainTokens, @intensity, @priority, @status, @autoRollover, @rolloverCount, @createdAt, @updatedAt)
-  `).run(task);
-
-  res.status(201).json(task);
 });
 
 // PUT /api/tasks/:id
-router.put('/:id', (req, res) => {
-  const { id } = req.params;
-  const { title, description, scheduledDate, startTime, endTime, brainTokens, priority, status, autoRollover } = req.body;
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
 
-  const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-  if (!existing) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
+    const task = AV.Object.createWithoutData('Task', id);
 
-  const updates = [];
-  const params = { id };
+    if (updates.title !== undefined) task.set('title', updates.title.trim());
+    if (updates.description !== undefined) task.set('description', updates.description || '');
+    if (updates.scheduledDate !== undefined) task.set('scheduledDate', updates.scheduledDate);
+    if (updates.startTime !== undefined) task.set('startTime', updates.startTime);
+    if (updates.endTime !== undefined) task.set('endTime', updates.endTime || '');
+    if (updates.brainTokens !== undefined) {
+      const tokens = Math.max(0, parseInt(updates.brainTokens, 10) || 0);
+      task.set('brainTokens', tokens);
+      task.set('intensity', mapIntensity(tokens));
+    }
+    if (updates.priority !== undefined) {
+      task.set('priority', Math.min(5, Math.max(1, parseInt(updates.priority, 10) || 3)));
+    }
+    if (updates.status !== undefined) task.set('status', updates.status);
+    if (updates.autoRollover !== undefined) task.set('autoRollover', !!updates.autoRollover);
 
-  if (title !== undefined) {
-    updates.push('title = @title');
-    params.title = title.trim();
+    const saved = await task.save();
+    res.json(saved.toJSON());
+  } catch (err) {
+    console.error('PUT task error:', err);
+    res.status(500).json({ error: err.message });
   }
-  if (description !== undefined) {
-    updates.push('description = @description');
-    params.description = description || null;
-  }
-  if (scheduledDate !== undefined) {
-    updates.push('scheduledDate = @scheduledDate');
-    params.scheduledDate = scheduledDate;
-  }
-  if (startTime !== undefined) {
-    updates.push('startTime = @startTime');
-    params.startTime = startTime;
-  }
-  if (endTime !== undefined) {
-    updates.push('endTime = @endTime');
-    params.endTime = endTime || null;
-  }
-  if (brainTokens !== undefined) {
-    const tokens = Math.max(0, parseInt(brainTokens, 10) || 0);
-    updates.push('brainTokens = @brainTokens');
-    params.brainTokens = tokens;
-    updates.push('intensity = @intensity');
-    params.intensity = mapIntensity(tokens);
-  }
-  if (priority !== undefined) {
-    updates.push('priority = @priority');
-    params.priority = Math.min(5, Math.max(1, parseInt(priority, 10) || 3));
-  }
-  if (status !== undefined) {
-    updates.push('status = @status');
-    params.status = status;
-  }
-  if (autoRollover !== undefined) {
-    updates.push('autoRollover = @autoRollover');
-    params.autoRollover = autoRollover ? 1 : 0;
-  }
-
-  updates.push('updatedAt = @updatedAt');
-  params.updatedAt = new Date().toISOString();
-
-  if (updates.length > 1) {
-    db.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = @id`).run(params);
-  }
-
-  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-  res.json(updated);
 });
 
 // DELETE /api/tasks/:id
-router.delete('/:id', (req, res) => {
-  const { id } = req.params;
-  const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-  if (!existing) {
-    return res.status(404).json({ error: 'Task not found' });
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const task = AV.Object.createWithoutData('Task', id);
+    await task.destroy();
+    res.json({ message: 'Task deleted' });
+  } catch (err) {
+    console.error('DELETE task error:', err);
+    res.status(500).json({ error: err.message });
   }
-  db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
-  res.json({ message: 'Task deleted' });
 });
 
-export default router;
+module.exports = router;
